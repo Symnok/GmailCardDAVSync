@@ -1,0 +1,127 @@
+<Page
+    x:Class="GmailCardDAVSync.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Padding="20,16,20,32">
+
+            <!-- HEADER -->
+            <TextBlock Text="Gmail CardDAV Sync"
+                       FontSize="24"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,4"/>
+
+            <TextBlock Text="Sync Google Contacts to your Lumia"
+                       FontSize="13"
+                       Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"
+                       Margin="0,0,0,24"/>
+
+            <!-- CREDENTIALS -->
+            <TextBlock Text="Gmail address"
+                       FontSize="12"
+                       Margin="0,0,0,4"/>
+            <TextBox x:Name="TxtEmail"
+                     PlaceholderText="you@gmail.com"
+                     InputScope="EmailSmtpAddress"
+                     FontSize="15"
+                     Margin="0,0,0,12"/>
+
+            <TextBlock Text="App Password  (not your Gmail password!)"
+                       FontSize="12"
+                       Margin="0,0,0,4"/>
+            <PasswordBox x:Name="TxtPassword"
+                         PlaceholderText="xxxx xxxx xxxx xxxx"
+                         FontSize="15"
+                         Margin="0,0,0,8"/>
+
+            <TextBlock Text="Create an App Password at myaccount.google.com/apppasswords (requires 2-Step Verification)"
+                       TextWrapping="Wrap"
+                       FontSize="11"
+                       Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"
+                       Margin="0,0,0,12"/>
+
+            <CheckBox x:Name="ChkSaveCredentials"
+                      Content="Remember credentials on this device"
+                      IsChecked="True"
+                      FontSize="13"
+                      Margin="0,0,0,20"/>
+
+            <!-- SYNC BUTTON -->
+            <Button x:Name="BtnSync"
+                    Content="Sync Contacts Now"
+                    HorizontalAlignment="Stretch"
+                    Height="52"
+                    FontSize="16"
+                    Click="BtnSync_Click"
+                    Margin="0,0,0,8"/>
+
+            <Button x:Name="BtnForget"
+                    Content="Forget saved credentials"
+                    HorizontalAlignment="Stretch"
+                    Height="44"
+                    FontSize="13"
+                    Margin="0,0,0,20"
+                    Click="BtnForget_Click"
+                    Visibility="Collapsed"/>
+
+            <!-- PROGRESS -->
+            <StackPanel x:Name="PanelProgress"
+                        Visibility="Collapsed"
+                        Margin="0,0,0,16">
+                <ProgressBar x:Name="ProgressBar"
+                             IsIndeterminate="True"
+                             Height="4"
+                             Margin="0,0,0,8"/>
+                <TextBlock x:Name="TxtProgress"
+                           FontSize="13"
+                           TextWrapping="Wrap"
+                           Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"/>
+            </StackPanel>
+
+            <!-- SUCCESS -->
+            <Border x:Name="BannerSuccess"
+                    Background="#E8F5E9"
+                    Padding="14,10"
+                    Visibility="Collapsed"
+                    Margin="0,0,0,12">
+                <TextBlock x:Name="TxtSuccess"
+                           FontSize="13"
+                           Foreground="#1B5E20"
+                           TextWrapping="Wrap"/>
+            </Border>
+
+            <!-- ERROR -->
+            <Border x:Name="BannerError"
+                    Background="#FFEBEE"
+                    Padding="14,10"
+                    Visibility="Collapsed"
+                    Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Sync failed"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="#B71C1C"
+                               Margin="0,0,0,4"/>
+                    <TextBlock x:Name="TxtError"
+                               FontSize="12"
+                               Foreground="#7F0000"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- LAST SYNC -->
+            <TextBlock x:Name="TxtLastSync"
+                       FontSize="11"
+                       Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"
+                       HorizontalAlignment="Right"
+                       Margin="0,4,0,0"
+                       Visibility="Collapsed"/>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>
