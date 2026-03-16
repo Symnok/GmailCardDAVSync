@@ -86,5 +86,8 @@ Currently, only one field is known **not to synchronize**:
 * Only a **Google App Password** is needed.
 
 ## Screenshot
-![App Screenshot](docs/images/screen.png)
+<p align="center">
+  <img src="(docs/images/screen.png" width="320">
+</p>
+
 ---
