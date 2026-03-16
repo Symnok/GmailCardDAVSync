@@ -1,0 +1,29 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" IgnorableNamespaces="uap mp">
+  <Identity Name="812f988b-8b59-4ed6-92e5-4c335021a9ec" Publisher="CN=GmailCardDAVSync" Version="0.0.20.0" />
+  <mp:PhoneIdentity PhoneProductId="812f988b-8b59-4ed6-92e5-4c335021a9ec" PhonePublisherId="F277562A-5BFE-44A7-8532-5655BE46B3B8" />
+  <Properties>
+    <DisplayName>GmailCardDAVSync</DisplayName>
+    <PublisherDisplayName>GmailCardDAVSync</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.0.0" MaxVersionTested="10.0.0.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="x-generate" />
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="GmailCardDAVSync.App">
+      <uap:VisualElements DisplayName="GmailCardDAVSync" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" Description="GmailCardDAVSync" BackgroundColor="transparent">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png">
+        </uap:DefaultTile>
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <uap:Capability Name="contacts" />
+  </Capabilities>
+</Package>
