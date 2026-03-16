@@ -1,7 +1,4 @@
 // Services/VCardParser.cs
-// Parses raw vCard 3.0 / 4.0 text into VCardContact objects.
-// Based on the approach used in davege1107/CardDAVUtilities (Basic Auth, no OAuth2).
-
 using System;
 using System.Collections.Generic;
 using GmailCardDAVSync.Models;
@@ -10,15 +7,11 @@ namespace GmailCardDAVSync.Services
 {
     public class VCardParser
     {
-        // ---------------------------------------------------------------
-        // PUBLIC: Parse a block of text that may contain 1..N vCards
-        // ---------------------------------------------------------------
         public List<VCardContact> ParseMultiple(string rawData)
         {
             var results = new List<VCardContact>();
             if (string.IsNullOrWhiteSpace(rawData)) return results;
 
-            // Un-fold RFC 6350 line continuations (CRLF + whitespace = one logical line)
             rawData = rawData.Replace("\r\n ", "").Replace("\r\n\t", "")
                              .Replace("\n ",   "").Replace("\n\t",   "");
 
@@ -34,17 +27,12 @@ namespace GmailCardDAVSync.Services
                 if (end < 0) break;
 
                 end += "END:VCARD".Length;
-                string block = rawData.Substring(begin, end - begin);
-                results.Add(ParseSingle(block));
+                results.Add(ParseSingle(rawData.Substring(begin, end - begin)));
                 searchFrom = end;
             }
-
             return results;
         }
 
-        // ---------------------------------------------------------------
-        // PUBLIC: Parse one vCard block
-        // ---------------------------------------------------------------
         public VCardContact ParseSingle(string vCardBlock)
         {
             var contact = new VCardContact();
@@ -56,15 +44,24 @@ namespace GmailCardDAVSync.Services
                 string line = rawLine.Trim();
                 if (string.IsNullOrEmpty(line)) continue;
 
-                // Split into  PROPERTY[;params] : VALUE
                 int colonPos = line.IndexOf(':');
                 if (colonPos < 0) continue;
 
                 string propFull = line.Substring(0, colonPos).ToUpperInvariant();
                 string value    = line.Substring(colonPos + 1).Trim();
 
-                // Base property name (before any semicolons / parameters)
-                string propName = propFull.Split(';')[0];
+                // Strip "itemN." prefix used by Google for unlabeled fields
+                // e.g. "item1.EMAIL" → "EMAIL", "item2.TEL" → "TEL"
+                string propBase = propFull.Split(';')[0];
+                int dotIdx = propBase.IndexOf('.');
+                string propName = dotIdx >= 0
+                    ? propBase.Substring(dotIdx + 1)
+                    : propBase;
+
+                // Skip X-ABLabel lines (just the label name, no useful data)
+                if (propName.StartsWith("X-ABLABEL") ||
+                    propName.StartsWith("X-AB"))
+                    continue;
 
                 switch (propName)
                 {
@@ -77,27 +74,38 @@ namespace GmailCardDAVSync.Services
                         break;
 
                     case "EMAIL":
-                        contact.Emails.Add(new ContactEmail
-                        {
-                            Address = Unescape(value),
-                            Type    = ExtractParam(propFull, "TYPE", "other")
-                        });
+                    {
+                        // Always add email — even if TYPE label is missing
+                        // Default type is "home" when label is absent
+                        string emailAddr = Unescape(value);
+                        if (!string.IsNullOrWhiteSpace(emailAddr))
+                            contact.Emails.Add(new ContactEmail
+                            {
+                                Address = emailAddr,
+                                Type    = ExtractParam(propFull, "TYPE", "home")
+                            });
                         break;
+                    }
 
                     case "TEL":
-                        contact.Phones.Add(new ContactPhone
-                        {
-                            Number = Unescape(value),
-                            Type   = ExtractParam(propFull, "TYPE", "other")
-                        });
+                    {
+                        // Always add phone — even if TYPE label is missing
+                        // Default type is "mobile" when label is absent
+                        string phoneNum = Unescape(value);
+                        if (!string.IsNullOrWhiteSpace(phoneNum))
+                            contact.Phones.Add(new ContactPhone
+                            {
+                                Number = phoneNum,
+                                Type   = ExtractParam(propFull, "TYPE", "mobile")
+                            });
                         break;
+                    }
 
                     case "ADR":
                         contact.Addresses.Add(ParseAdr(propFull, value));
                         break;
 
                     case "ORG":
-                        // ORG may contain dept after semicolon: CompanyName;Dept
                         contact.Organization = Unescape(value.Split(';')[0]);
                         break;
 
@@ -118,52 +126,56 @@ namespace GmailCardDAVSync.Services
                         break;
 
                     case "PHOTO":
-                        // Only store URI-type photos (skip base64 inline for W10M)
                         if (propFull.Contains("VALUE=URI") || value.StartsWith("http",
                             StringComparison.OrdinalIgnoreCase))
-                        {
                             contact.PhotoUrl = value;
-                        }
                         break;
 
                     case "UID":
                         contact.Uid = value;
                         break;
+
+                    // NEW — URL field (websites)
+                    // vCard examples:
+                    //   URL:https://example.com
+                    //   URL;TYPE=work:https://company.com
+                    //   URL;TYPE=home:https://personal.com
+                    case "URL":
+                        string url = Unescape(value);
+                        if (!string.IsNullOrEmpty(url))
+                        {
+                            contact.Websites.Add(new ContactWebsite
+                            {
+                                Url  = url,
+                                Type = ExtractParam(propFull, "TYPE", "other")
+                            });
+                        }
+                        break;
                 }
             }
 
-            // Fallback: if FN was missing, build from N parts
             if (string.IsNullOrEmpty(contact.DisplayName))
-            {
-                contact.DisplayName =
-                    (contact.FirstName + " " + contact.LastName).Trim();
-            }
+                contact.DisplayName = (contact.FirstName + " " + contact.LastName).Trim();
 
             return contact;
         }
 
-        // ---------------------------------------------------------------
-        // PRIVATE helpers
-        // ---------------------------------------------------------------
-
-        // N:LastName;FirstName;Middle;Prefix;Suffix
         private void ParseN(string value, VCardContact c)
         {
             var parts = value.Split(';');
             if (parts.Length > 0) c.LastName   = Unescape(parts[0]);
             if (parts.Length > 1) c.FirstName  = Unescape(parts[1]);
-            if (parts.Length > 2) c.MiddleName = Unescape(parts[2]);
+            // Middle name intentionally ignored — causes display issues on W10M
+            // if (parts.Length > 2) c.MiddleName = Unescape(parts[2]);
             if (parts.Length > 3) c.NamePrefix = Unescape(parts[3]);
             if (parts.Length > 4) c.NameSuffix = Unescape(parts[4]);
         }
 
-        // ADR;TYPE=home:POBox;Ext;Street;City;Region;PostalCode;Country
         private ContactAddress ParseAdr(string propFull, string value)
         {
             var parts = value.Split(';');
             return new ContactAddress
             {
-                // parts[0]=POBox, parts[1]=Extended, parts[2]=Street
                 Street     = parts.Length > 2 ? Unescape(parts[2]) : string.Empty,
                 City       = parts.Length > 3 ? Unescape(parts[3]) : string.Empty,
                 Region     = parts.Length > 4 ? Unescape(parts[4]) : string.Empty,
@@ -173,8 +185,6 @@ namespace GmailCardDAVSync.Services
             };
         }
 
-        // Extract a named parameter value from the property descriptor
-        // e.g. "EMAIL;TYPE=WORK" → ExtractParam(..., "TYPE", "other") → "work"
         private string ExtractParam(string propFull, string paramName, string defaultVal)
         {
             string search = paramName + "=";
@@ -183,14 +193,40 @@ namespace GmailCardDAVSync.Services
 
             idx += search.Length;
             int end = propFull.IndexOf(';', idx);
-            string val = end < 0
+            string raw = end < 0
                 ? propFull.Substring(idx)
                 : propFull.Substring(idx, end - idx);
 
-            return val.ToLowerInvariant();
+            raw = raw.ToLowerInvariant().Trim();
+
+            if (string.IsNullOrEmpty(raw)) return defaultVal;
+
+            // Normalize Google's real TYPE values to simple labels
+            // Google sends: INTERNET, VOICE, PREF, CELL,VOICE, HOME,VOICE etc.
+            return NormalizeType(raw, defaultVal);
         }
 
-        // Decode vCard escape sequences  \n  \,  \;  \\
+        private string NormalizeType(string raw, string defaultVal)
+        {
+            // Handle comma-separated values like "cell,voice" or "home,voice"
+            // Split and check each part
+            string[] parts = raw.Split(',');
+            foreach (string part in parts)
+            {
+                string p = part.Trim();
+                if (p == "home")                        return "home";
+                if (p == "work")                        return "work";
+                if (p == "cell" || p == "mobile")       return "mobile";
+                if (p == "x-mobile")                    return "mobile";
+                if (p == "pager")                       return "pager";
+                if (p == "fax" || p == "x-fax")        return "fax";
+                if (p == "other")                       return "other";
+                // Skip non-meaningful labels: internet, voice, pref, x-*, etc.
+            }
+            // None of the parts matched a meaningful label → use default
+            return defaultVal;
+        }
+
         private string Unescape(string s)
         {
             if (string.IsNullOrEmpty(s)) return s;
