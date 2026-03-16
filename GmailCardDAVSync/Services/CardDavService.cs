@@ -9,6 +9,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 using GmailCardDAVSync.Models;
+using Windows.ApplicationModel.Contacts;
 
 namespace GmailCardDAVSync.Services
 {
@@ -164,6 +165,52 @@ namespace GmailCardDAVSync.Services
             }
 
             return contacts;
+        }
+
+
+        // ================================================================
+        // UPLOAD — PUT a contact to Google CardDAV
+        // If contact has a Href (came from Google), update it.
+        // Otherwise create a new one using UID as filename.
+        // ================================================================
+        public async Task<bool> UploadContactAsync(
+            Windows.ApplicationModel.Contacts.Contact contact,
+            IProgress<string> progress = null)
+        {
+            try
+            {
+                string uid = string.IsNullOrEmpty(contact.RemoteId)
+                    ? System.Guid.NewGuid().ToString()
+                    : contact.RemoteId;
+
+                // Look up the exact Google href saved during last sync.
+                // This prevents duplicates — we PUT to the same URL Google uses.
+                string savedHref = GmailCardDAVSync.Helpers.ETagStorage
+                    .GetHrefForUid(uid);
+
+                string url = savedHref != null
+                    ? BaseUrl + savedHref           // existing contact — use Google's URL
+                    : _addressBookUrl + uid + ".vcf"; // new contact — create at UID path
+
+                string vcard = VCardSerializer.Serialize(contact);
+
+                var req = new HttpRequestMessage
+                {
+                    Method     = HttpMethod.Put,
+                    RequestUri = new Uri(url),
+                    Content    = new StringContent(vcard,
+                                     Encoding.UTF8, "text/vcard")
+                };
+
+                // New contact — tell Google not to overwrite if it already exists
+                if (savedHref == null)
+                    req.Headers.TryAddWithoutValidation("If-None-Match", "*");
+
+                var response = await _http.SendAsync(req);
+                int code = (int)response.StatusCode;
+                return response.IsSuccessStatusCode || code == 201 || code == 204;
+            }
+            catch { return false; }
         }
 
         // ================================================================

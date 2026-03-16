@@ -12,6 +12,8 @@ using VCardPhone   = GmailCardDAVSync.Models.ContactPhone;
 using VCardAddr    = GmailCardDAVSync.Models.ContactAddress;
 using VCardWeb     = GmailCardDAVSync.Models.ContactWebsite;
 using VCardContact = GmailCardDAVSync.Models.VCardContact;
+using GmailCardDAVSync.Helpers;
+using Windows.ApplicationModel.Contacts;
 
 namespace GmailCardDAVSync.Services
 {
@@ -34,15 +36,28 @@ namespace GmailCardDAVSync.Services
 
             progress?.Report("Writing " + contacts.Count + " contacts...");
             int saved = 0;
+            var hashMap = new System.Collections.Generic.Dictionary<string, string>();
+
             foreach (var vc in contacts)
             {
                 try
                 {
-                    await list.SaveContactAsync(ToUwpContact(vc));
+                    var uwpContact = ToUwpContact(vc);
+                    await list.SaveContactAsync(uwpContact);
+                    SaveLabels(vc);
+
+                    // Save hash of this contact so we can detect changes later
+                    if (!string.IsNullOrEmpty(vc.Uid))
+                        hashMap[vc.Uid] = ContactHashStorage.ComputeHash(uwpContact);
+
                     saved++;
                 }
                 catch { }
             }
+
+            // Persist hashes for Phone→Google change detection
+            ContactHashStorage.SaveAll(hashMap);
+
             return saved;
         }
 
@@ -78,7 +93,17 @@ namespace GmailCardDAVSync.Services
             }
 
             // Save as fresh contact
-            await list.SaveContactAsync(ToUwpContact(vc));
+            var upserted = ToUwpContact(vc);
+            await list.SaveContactAsync(upserted);
+            SaveLabels(vc);
+
+            // Update stored hash
+            if (!string.IsNullOrEmpty(vc.Uid))
+            {
+                var hashes = ContactHashStorage.LoadAll();
+                hashes[vc.Uid] = ContactHashStorage.ComputeHash(upserted);
+                ContactHashStorage.SaveAll(hashes);
+            }
         }
 
         // ================================================================
@@ -107,6 +132,33 @@ namespace GmailCardDAVSync.Services
             }
         }
 
+
+        // ================================================================
+        // READ ALL — read all contacts from our Gmail list on the phone
+        // Used for Phone → Google sync
+        // ================================================================
+        public async Task<System.Collections.Generic.List<Windows.ApplicationModel.Contacts.Contact>>
+            ReadAllContactsAsync(IProgress<string> progress = null)
+        {
+            var store  = await GetStoreAsync();
+            var list   = await GetOrCreateListAsync(store);
+            var result = new System.Collections.Generic.List<Windows.ApplicationModel.Contacts.Contact>();
+
+            progress?.Report("Reading contacts from phone...");
+
+            var reader = list.GetContactReader();
+            var batch  = await reader.ReadBatchAsync();
+            while (batch.Contacts.Count > 0)
+            {
+                foreach (var c in batch.Contacts)
+                    result.Add(c);
+                batch = await reader.ReadBatchAsync();
+            }
+
+            progress?.Report("Read " + result.Count + " contacts from phone.");
+            return result;
+        }
+
         // ================================================================
         // PRIVATE helpers
         // ================================================================
@@ -130,7 +182,7 @@ namespace GmailCardDAVSync.Services
 
             var newList = await store.CreateContactListAsync(ListDisplayName);
             newList.OtherAppReadAccess  = ContactListOtherAppReadAccess.Full;
-            newList.OtherAppWriteAccess = ContactListOtherAppWriteAccess.None;
+            newList.OtherAppWriteAccess = ContactListOtherAppWriteAccess.SystemOnly;
             await newList.SaveAsync();
             return newList;
         }
@@ -268,6 +320,48 @@ namespace GmailCardDAVSync.Services
             if (type.Contains("blog")) return "Blog";
             if (type.Contains("ftp"))  return "FTP";
             return "Other";
+        }
+
+        // Save phone/email labels for a contact so they survive
+        // People app edits and can be restored on Phone→Google upload
+        private void SaveLabels(VCardContact vc)
+        {
+            if (string.IsNullOrEmpty(vc.Uid)) return;
+
+            var labels = new System.Collections.Generic.Dictionary<string, string>();
+
+            for (int i = 0; i < vc.Phones.Count; i++)
+            {
+                string type = PhoneTypeToDescription(vc.Phones[i].Type);
+                // Store the vCard TYPE value directly for round-trip fidelity
+                labels["phone_" + i] = PhoneTypeToVCard(vc.Phones[i].Type);
+            }
+
+            for (int i = 0; i < vc.Emails.Count; i++)
+                labels["email_" + i] = EmailTypeToVCard(vc.Emails[i].Type);
+
+            LabelStorage.SaveLabels(vc.Uid, labels);
+        }
+
+        private string PhoneTypeToVCard(string type)
+        {
+            if (string.IsNullOrEmpty(type)) return "CELL,VOICE";
+            string t = type.ToLowerInvariant();
+            if (t == "home")   return "HOME,VOICE";
+            if (t == "work")   return "WORK,VOICE";
+            if (t == "mobile") return "CELL,VOICE";
+            if (t == "pager")  return "PAGER";
+            if (t == "fax")    return "FAX";
+            return "CELL,VOICE";
+        }
+
+        private string EmailTypeToVCard(string type)
+        {
+            if (string.IsNullOrEmpty(type)) return "INTERNET,HOME";
+            string t = type.ToLowerInvariant();
+            if (t == "home")   return "INTERNET,HOME";
+            if (t == "work")   return "INTERNET,WORK";
+            return "INTERNET";
         }
 
         private bool TryParseBirthday(string s, out DateTimeOffset result)
