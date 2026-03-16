@@ -1,1 +1,1 @@
-This is a docs folder
+This is a screenshots folder
