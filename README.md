@@ -85,4 +85,6 @@ Currently, only one field is known **not to synchronize**:
 * No Google Cloud project configuration is required.
 * Only a **Google App Password** is needed.
 
+## Screenshot
+![App Screenshot](docs/images/screen.png)
 ---
