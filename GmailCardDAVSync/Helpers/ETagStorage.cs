@@ -1,6 +1,7 @@
 // Helpers/ETagStorage.cs
-// Stores href→etag pairs in ApplicationData.LocalSettings so we can
-// do incremental sync — only fetch contacts whose etag changed.
+// Stores href→etag pairs AND uid→href mapping in ApplicationData.LocalSettings.
+// The uid→href map is used when uploading contacts back to Google,
+// so we PUT to the correct existing URL instead of creating a duplicate.
 
 using System.Collections.Generic;
 using Windows.Storage;
@@ -9,25 +10,22 @@ namespace GmailCardDAVSync.Helpers
 {
     public static class ETagStorage
     {
-        // Container name in LocalSettings
-        private const string ContainerName = "CardDAVETags";
+        private const string ETagContainer = "CardDAVETags";
+        private const string HrefContainer = "CardDAVHrefs"; // uid → href
 
         // ---------------------------------------------------------------
-        // Save the full map of href → etag after a successful sync
+        // Save href→etag map after sync
         // ---------------------------------------------------------------
         public static void SaveAll(Dictionary<string, string> hrefToEtag)
         {
             var settings  = ApplicationData.Current.LocalSettings;
-            var container = settings.CreateContainer(ContainerName,
+            var container = settings.CreateContainer(ETagContainer,
                 ApplicationDataCreateDisposition.Always);
 
-            // Clear old entries first
             container.Values.Clear();
 
             foreach (var kv in hrefToEtag)
             {
-                // LocalSettings keys can't be longer than 255 chars
-                // Use a short hash of the href as key, store "href|etag" as value
                 string key   = SafeKey(kv.Key);
                 string value = kv.Key + "|" + kv.Value;
                 container.Values[key] = value;
@@ -35,17 +33,58 @@ namespace GmailCardDAVSync.Helpers
         }
 
         // ---------------------------------------------------------------
-        // Load saved href → etag map
+        // Save uid→href map after sync (for upload lookup)
+        // ---------------------------------------------------------------
+        public static void SaveUidHrefs(Dictionary<string, string> uidToHref)
+        {
+            var settings  = ApplicationData.Current.LocalSettings;
+            var container = settings.CreateContainer(HrefContainer,
+                ApplicationDataCreateDisposition.Always);
+
+            container.Values.Clear();
+
+            foreach (var kv in uidToHref)
+            {
+                if (!string.IsNullOrEmpty(kv.Key))
+                    container.Values[SafeKey(kv.Key)] = kv.Key + "|" + kv.Value;
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Look up Google href for a given UID
+        // Returns null if not found (contact is new, not from Google)
+        // ---------------------------------------------------------------
+        public static string GetHrefForUid(string uid)
+        {
+            if (string.IsNullOrEmpty(uid)) return null;
+
+            var settings = ApplicationData.Current.LocalSettings;
+            if (!settings.Containers.ContainsKey(HrefContainer)) return null;
+
+            var container = settings.Containers[HrefContainer];
+            string key    = SafeKey(uid);
+
+            if (!container.Values.ContainsKey(key)) return null;
+
+            string stored = container.Values[key] as string;
+            if (string.IsNullOrEmpty(stored)) return null;
+
+            int sep = stored.IndexOf('|');
+            return sep >= 0 ? stored.Substring(sep + 1) : null;
+        }
+
+        // ---------------------------------------------------------------
+        // Load href→etag map
         // ---------------------------------------------------------------
         public static Dictionary<string, string> LoadAll()
         {
             var result   = new Dictionary<string, string>();
             var settings = ApplicationData.Current.LocalSettings;
 
-            if (!settings.Containers.ContainsKey(ContainerName))
+            if (!settings.Containers.ContainsKey(ETagContainer))
                 return result;
 
-            var container = settings.Containers[ContainerName];
+            var container = settings.Containers[ETagContainer];
             foreach (var kv in container.Values)
             {
                 string stored = kv.Value as string;
@@ -62,32 +101,58 @@ namespace GmailCardDAVSync.Helpers
         }
 
         // ---------------------------------------------------------------
-        // Check if any etags are saved (i.e. we've synced before)
+        // Load uid→href map
+        // ---------------------------------------------------------------
+        public static Dictionary<string, string> LoadUidHrefs()
+        {
+            var result   = new Dictionary<string, string>();
+            var settings = ApplicationData.Current.LocalSettings;
+
+            if (!settings.Containers.ContainsKey(HrefContainer))
+                return result;
+
+            var container = settings.Containers[HrefContainer];
+            foreach (var kv in container.Values)
+            {
+                string stored = kv.Value as string;
+                if (string.IsNullOrEmpty(stored)) continue;
+
+                int sep = stored.IndexOf('|');
+                if (sep < 0) continue;
+
+                string uid  = stored.Substring(0, sep);
+                string href = stored.Substring(sep + 1);
+                result[uid] = href;
+            }
+            return result;
+        }
+
+        // ---------------------------------------------------------------
+        // HasData / Clear
         // ---------------------------------------------------------------
         public static bool HasData()
         {
             var settings = ApplicationData.Current.LocalSettings;
-            if (!settings.Containers.ContainsKey(ContainerName))
+            if (!settings.Containers.ContainsKey(ETagContainer))
                 return false;
-            return settings.Containers[ContainerName].Values.Count > 0;
+            return settings.Containers[ETagContainer].Values.Count > 0;
         }
 
-        // ---------------------------------------------------------------
-        // Clear all saved etags (used when user changes account)
-        // ---------------------------------------------------------------
         public static void Clear()
         {
             var settings = ApplicationData.Current.LocalSettings;
-            if (settings.Containers.ContainsKey(ContainerName))
-                settings.Containers[ContainerName].Values.Clear();
+            if (settings.Containers.ContainsKey(ETagContainer))
+                settings.Containers[ETagContainer].Values.Clear();
+            if (settings.Containers.ContainsKey(HrefContainer))
+                settings.Containers[HrefContainer].Values.Clear();
+            LabelStorage.Clear();
+            ContactHashStorage.Clear();
         }
 
-        // Make a safe LocalSettings key from an href
-        private static string SafeKey(string href)
+        private static string SafeKey(string s)
         {
-            // Simple: use last 200 chars (enough to be unique per contact)
-            if (href.Length <= 200) return href;
-            return href.Substring(href.Length - 200);
+            if (s.Length <= 200) return s;
+            return s.Substring(s.Length - 200);
         }
     }
 }
