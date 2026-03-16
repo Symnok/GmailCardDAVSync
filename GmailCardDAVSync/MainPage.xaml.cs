@@ -251,14 +251,24 @@ namespace GmailCardDAVSync
 
                 foreach (var contact in changed)
                 {
-                    bool ok = await cardDav.UploadContactAsync(contact, progress);
-                    if (ok)
+                    bool wasNew = string.IsNullOrEmpty(contact.RemoteId);
+
+                    string usedUid = await cardDav.UploadContactAsync(
+                        contact, progress);
+
+                    if (usedUid != null)
                     {
                         uploaded++;
-                        // Update stored hash so next sync doesn't re-upload
-                        if (!string.IsNullOrEmpty(contact.RemoteId))
-                            currentHashes[contact.RemoteId] =
-                                ContactHashStorage.ComputeHash(contact);
+
+                        // NEW contact — save the generated UID back to the
+                        // phone contact's RemoteId so next sync knows it
+                        // already exists on Google and won't create a duplicate
+                        if (wasNew)
+                            await store.SaveRemoteIdAsync(contact.Id, usedUid);
+
+                        // Update hash using actual UID
+                        currentHashes[usedUid] =
+                            ContactHashStorage.ComputeHash(contact);
                     }
                     else failed++;
                     i++;

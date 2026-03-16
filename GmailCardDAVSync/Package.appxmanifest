@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" IgnorableNamespaces="uap mp">
-  <Identity Name="812f988b-8b59-4ed6-92e5-4c335021a9ec" Publisher="CN=GmailCardDAVSync" Version="0.0.17.0" />
+  <Identity Name="812f988b-8b59-4ed6-92e5-4c335021a9ec" Publisher="CN=GmailCardDAVSync" Version="0.0.20.0" />
   <mp:PhoneIdentity PhoneProductId="812f988b-8b59-4ed6-92e5-4c335021a9ec" PhonePublisherId="F277562A-5BFE-44A7-8532-5655BE46B3B8" />
   <Properties>
     <DisplayName>GmailCardDAVSync</DisplayName>
