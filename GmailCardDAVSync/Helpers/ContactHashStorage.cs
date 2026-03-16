@@ -21,47 +21,42 @@ namespace GmailCardDAVSync.Helpers
         {
             var sb = new System.Text.StringBuilder();
 
-            sb.Append(c.FirstName  ?? "");
-            sb.Append("|");
-            sb.Append(c.LastName   ?? "");
-            sb.Append("|");
-            sb.Append(c.Nickname   ?? "");
-            sb.Append("|");
-            sb.Append(c.Notes      ?? "");
+            // Name fields — normalize to avoid case/whitespace false positives
+            sb.Append(Norm(c.FirstName)); sb.Append("|");
+            sb.Append(Norm(c.LastName));  sb.Append("|");
+            sb.Append(Norm(c.Nickname));  sb.Append("|");
+            sb.Append(Norm(c.Notes));
 
+            // Emails — address ONLY, no Kind or Description
+            // Kind/Description may be normalized differently by W10M on readback
             foreach (var e in c.Emails)
             {
                 sb.Append("|E:");
-                sb.Append(e.Address ?? "");
-                sb.Append(":");
-                sb.Append(e.Kind.ToString());
-                sb.Append(":");
-                sb.Append(e.Description ?? "");
+                sb.Append(Norm(e.Address));
             }
 
+            // Phones — number ONLY, no Description (label)
+            // Normalize number format so "+1 800-555" == "+1800555"
             foreach (var p in c.Phones)
             {
                 sb.Append("|P:");
-                sb.Append(p.Number ?? "");
-                sb.Append(":");
-                sb.Append(p.Description ?? "");
+                sb.Append(NormPhone(p.Number));
             }
 
             foreach (var a in c.Addresses)
             {
                 sb.Append("|A:");
-                sb.Append(a.StreetAddress ?? "");
-                sb.Append(a.Locality      ?? "");
-                sb.Append(a.PostalCode    ?? "");
-                sb.Append(a.Country       ?? "");
+                sb.Append(Norm(a.StreetAddress));
+                sb.Append(Norm(a.Locality));
+                sb.Append(Norm(a.PostalCode));
+                sb.Append(Norm(a.Country));
             }
 
             if (c.JobInfo.Count > 0)
             {
                 sb.Append("|J:");
-                sb.Append(c.JobInfo[0].CompanyName ?? "");
-                sb.Append(":");
-                sb.Append(c.JobInfo[0].Title       ?? "");
+                sb.Append(Norm(c.JobInfo[0].CompanyName));
+                sb.Append(Norm(c.JobInfo[0].Title));
             }
 
             foreach (var date in c.ImportantDates)
@@ -78,13 +73,29 @@ namespace GmailCardDAVSync.Helpers
                 }
             }
 
-            // Simple hash — combine all chars into an int
             string raw = sb.ToString();
             int hash   = 17;
             foreach (char ch in raw)
                 hash = hash * 31 + ch;
 
             return hash.ToString();
+        }
+
+        // Normalize: trim + lowercase so minor differences don't cause false positives
+        private static string Norm(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return s.Trim().ToLowerInvariant();
+        }
+
+        // Normalize phone: digits and + only
+        private static string NormPhone(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            var sb = new System.Text.StringBuilder();
+            foreach (char c in s)
+                if (char.IsDigit(c) || c == '+') sb.Append(c);
+            return sb.ToString();
         }
 
         // ---------------------------------------------------------------
