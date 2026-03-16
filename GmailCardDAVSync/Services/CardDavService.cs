@@ -173,24 +173,27 @@ namespace GmailCardDAVSync.Services
         // If contact has a Href (came from Google), update it.
         // Otherwise create a new one using UID as filename.
         // ================================================================
-        public async Task<bool> UploadContactAsync(
+        // Returns the UID used on success, null on failure.
+        // Caller saves this UID back to phone contact's RemoteId
+        // to prevent duplicates on subsequent syncs.
+        public async Task<string> UploadContactAsync(
             Windows.ApplicationModel.Contacts.Contact contact,
             IProgress<string> progress = null)
         {
             try
             {
+                // Use existing RemoteId or generate a stable new UID
                 string uid = string.IsNullOrEmpty(contact.RemoteId)
                     ? System.Guid.NewGuid().ToString()
                     : contact.RemoteId;
 
-                // Look up the exact Google href saved during last sync.
-                // This prevents duplicates — we PUT to the same URL Google uses.
+                // Look up saved Google href — PUT to same URL to avoid duplicates
                 string savedHref = GmailCardDAVSync.Helpers.ETagStorage
                     .GetHrefForUid(uid);
 
                 string url = savedHref != null
-                    ? BaseUrl + savedHref           // existing contact — use Google's URL
-                    : _addressBookUrl + uid + ".vcf"; // new contact — create at UID path
+                    ? BaseUrl + savedHref
+                    : _addressBookUrl + uid + ".vcf";
 
                 string vcard = VCardSerializer.Serialize(contact);
 
@@ -198,19 +201,33 @@ namespace GmailCardDAVSync.Services
                 {
                     Method     = HttpMethod.Put,
                     RequestUri = new Uri(url),
-                    Content    = new StringContent(vcard,
-                                     Encoding.UTF8, "text/vcard")
+                    Content    = new StringContent(vcard, Encoding.UTF8, "text/vcard")
                 };
 
-                // New contact — tell Google not to overwrite if it already exists
                 if (savedHref == null)
                     req.Headers.TryAddWithoutValidation("If-None-Match", "*");
 
                 var response = await _http.SendAsync(req);
-                int code = (int)response.StatusCode;
-                return response.IsSuccessStatusCode || code == 201 || code == 204;
+                int code     = (int)response.StatusCode;
+                bool ok      = response.IsSuccessStatusCode || code == 201 || code == 204;
+
+                if (ok)
+                {
+                    // Save href mapping so next upload uses correct URL
+                    if (savedHref == null)
+                    {
+                        string href = _addressBookUrl.Replace(BaseUrl, "")
+                                      + uid + ".vcf";
+                        var hrefs   = GmailCardDAVSync.Helpers.ETagStorage
+                            .LoadUidHrefs();
+                        hrefs[uid]  = href;
+                        GmailCardDAVSync.Helpers.ETagStorage.SaveUidHrefs(hrefs);
+                    }
+                    return uid;
+                }
+                return null;
             }
-            catch { return false; }
+            catch { return null; }
         }
 
         // ================================================================

@@ -160,6 +160,38 @@ namespace GmailCardDAVSync.Services
         }
 
         // ================================================================
+        // Save generated UID back to a phone contact's RemoteId.
+        // Called after first upload of a new contact to Google.
+        // ================================================================
+        public async Task SaveRemoteIdAsync(string contactId, string uid)
+        {
+            if (string.IsNullOrEmpty(contactId) ||
+                string.IsNullOrEmpty(uid)) return;
+            try
+            {
+                var store = await GetStoreAsync();
+                var list  = await GetOrCreateListAsync(store);
+
+                var reader = list.GetContactReader();
+                var batch  = await reader.ReadBatchAsync();
+                while (batch.Contacts.Count > 0)
+                {
+                    foreach (var c in batch.Contacts)
+                    {
+                        if (c.Id == contactId)
+                        {
+                            c.RemoteId = uid;
+                            await list.SaveContactAsync(c);
+                            return;
+                        }
+                    }
+                    batch = await reader.ReadBatchAsync();
+                }
+            }
+            catch { }
+        }
+
+        // ================================================================
         // PRIVATE helpers
         // ================================================================
         private async Task<ContactStore> GetStoreAsync()
