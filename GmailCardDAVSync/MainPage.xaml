@@ -15,8 +15,7 @@
                        FontSize="24"
                        FontWeight="SemiBold"
                        Margin="0,0,0,4"/>
-
-            <TextBlock Text="Sync Google Contacts to your Lumia"
+            <TextBlock Text="Sync contacts between Google and your Lumia"
                        FontSize="13"
                        Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"
                        Margin="0,0,0,24"/>
@@ -51,14 +50,22 @@
                       FontSize="13"
                       Margin="0,0,0,20"/>
 
-            <!-- SYNC BUTTON -->
-            <Button x:Name="BtnSync"
-                    Content="Sync Contacts Now"
+            <!-- SYNC BUTTONS -->
+            <Button x:Name="BtnGoogleToPhone"
+                    Content="&#xE896;  Google → Phone"
                     HorizontalAlignment="Stretch"
                     Height="52"
-                    FontSize="16"
-                    Click="BtnSync_Click"
+                    FontSize="15"
+                    Click="BtnGoogleToPhone_Click"
                     Margin="0,0,0,8"/>
+
+            <Button x:Name="BtnPhoneToGoogle"
+                    Content="&#xE898;  Phone → Google"
+                    HorizontalAlignment="Stretch"
+                    Height="52"
+                    FontSize="15"
+                    Click="BtnPhoneToGoogle_Click"
+                    Margin="0,0,0,16"/>
 
             <Button x:Name="BtnForget"
                     Content="Forget saved credentials"

@@ -6,6 +6,7 @@ using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
 using GmailCardDAVSync.Helpers;
 using GmailCardDAVSync.Services;
+using GmailCardDAVSync.Services;
 
 namespace GmailCardDAVSync
 {
@@ -36,28 +37,45 @@ namespace GmailCardDAVSync
                 TxtProgress.Text = msg);
         }
 
-        private async void BtnSync_Click(object sender, RoutedEventArgs e)
+        // ================================================================
+        // Validate credentials — shared by both buttons
+        // ================================================================
+        private bool ValidateInputs(out string email, out string password)
         {
-            string email    = TxtEmail.Text.Trim();
-            string password = TxtPassword.Password.Trim().Replace(" ", "");
+            email    = TxtEmail.Text.Trim();
+            password = TxtPassword.Password.Trim().Replace(" ", "");
 
             if (string.IsNullOrEmpty(email) || !email.Contains("@"))
             {
                 ShowError("Please enter a valid Gmail address.");
-                return;
+                return false;
             }
             if (string.IsNullOrEmpty(password) || password.Length < 16)
             {
                 ShowError("Please enter your Google App Password (16 characters).\n" +
                           "NOT your regular Gmail password.");
-                return;
+                return false;
             }
+            return true;
+        }
 
+        private void SaveCredentialsIfRequested(string email, string password)
+        {
             if (ChkSaveCredentials.IsChecked == true)
             {
                 CredentialStorage.Save(email, password);
                 BtnForget.Visibility = Visibility.Visible;
             }
+        }
+
+        // ================================================================
+        // BUTTON 1: Google → Phone
+        // ================================================================
+        private async void BtnGoogleToPhone_Click(object sender, RoutedEventArgs e)
+        {
+            string email, password;
+            if (!ValidateInputs(out email, out password)) return;
+            SaveCredentialsIfRequested(email, password);
 
             SetUiBusy(true);
             HideAllBanners();
@@ -76,13 +94,10 @@ namespace GmailCardDAVSync
 
                 if (isFirstSync)
                 {
-                    // ================================================
-                    // FIRST SYNC — download everything
-                    // ================================================
                     mode = "full";
                     var fetchResult = await cardDav.FetchAllContactsAsync(progress);
-                    var contacts = fetchResult.Contacts;
-                    var etags    = fetchResult.Etags;
+                    var contacts    = fetchResult.Contacts;
+                    var etags       = fetchResult.Etags;
 
                     if (contacts.Count == 0)
                     {
@@ -91,25 +106,26 @@ namespace GmailCardDAVSync
                     }
 
                     count = await store.SyncAsync(contacts, progress);
-
-                    // Save etags for future incremental syncs
                     ETagStorage.SaveAll(etags);
+
+                    // Save uid→href so Phone→Google knows the correct URL per contact
+                    var uidToHref = new Dictionary<string, string>();
+                    foreach (var c in contacts)
+                        if (!string.IsNullOrEmpty(c.Uid) && !string.IsNullOrEmpty(c.Href))
+                            uidToHref[c.Uid] = c.Href;
+                    ETagStorage.SaveUidHrefs(uidToHref);
                 }
                 else
                 {
-                    // ================================================
-                    // INCREMENTAL SYNC — only changed contacts
-                    // ================================================
                     mode = "incremental";
                     var localEtags = ETagStorage.LoadAll();
                     var diff = await cardDav.GetChangesAsync(localEtags, progress);
 
                     if (diff.ChangedHrefs.Count == 0 && diff.DeletedHrefs.Count == 0)
                     {
-                        // Nothing changed — still update etag map and show success
                         ETagStorage.SaveAll(diff.ServerEtags);
                         string when2 = DateTime.Now.ToString("dd MMM yyyy  HH:mm");
-                        TxtSuccess.Text = "All contacts up to date. No changes.";
+                        TxtSuccess.Text          = "All contacts up to date. No changes.";
                         BannerSuccess.Visibility = Visibility.Visible;
                         TxtLastSync.Text         = "Last sync: " + when2;
                         TxtLastSync.Visibility   = Visibility.Visible;
@@ -120,50 +136,44 @@ namespace GmailCardDAVSync
                         diff.ChangedHrefs.Count + " to update, " +
                         diff.DeletedHrefs.Count + " to delete.");
 
-                    // Download and upsert changed contacts
                     if (diff.ChangedHrefs.Count > 0)
                     {
                         var changed = await cardDav.FetchContactsByHrefsAsync(
                             diff.ChangedHrefs, diff.ServerEtags, progress);
 
                         progress.Report("Updating " + changed.Count + " contacts...");
+                        var updatedUidHrefs = ETagStorage.LoadUidHrefs();
                         foreach (var vc in changed)
                         {
                             await store.UpsertContactAsync(vc);
                             count++;
+                            // Update href map for this contact
+                            if (!string.IsNullOrEmpty(vc.Uid) &&
+                                !string.IsNullOrEmpty(vc.Href))
+                                updatedUidHrefs[vc.Uid] = vc.Href;
                         }
+                        ETagStorage.SaveUidHrefs(updatedUidHrefs);
                     }
 
-                    // Delete removed contacts
                     if (diff.DeletedHrefs.Count > 0)
                     {
                         progress.Report("Removing " +
                             diff.DeletedHrefs.Count + " deleted contacts...");
-
-                        // We need UIDs to delete — load from saved etag map
-                        // by doing a fresh fetch of deleted hrefs won't work
-                        // (they're gone). Instead we store href→uid separately.
-                        // For now: do a full re-read of contact list to find by href
                         foreach (var href in diff.DeletedHrefs)
                         {
-                            // Use href as a fallback key — contacts were saved
-                            // with RemoteId = UID. Look up UID from saved data.
                             string uid = UidFromHref(href);
                             if (!string.IsNullOrEmpty(uid))
                                 await store.DeleteContactByUidAsync(uid);
                         }
                     }
 
-                    // Save updated etag map
                     ETagStorage.SaveAll(diff.ServerEtags);
                 }
 
                 string when = DateTime.Now.ToString("dd MMM yyyy  HH:mm");
-                string result = mode == "full"
-                    ? count + " contacts synced (full sync)."
-                    : count + " contacts updated (incremental sync).";
-
-                TxtSuccess.Text          = result;
+                TxtSuccess.Text = mode == "full"
+                    ? count + " contacts synced from Google (full sync)."
+                    : count + " contacts updated from Google (incremental).";
                 BannerSuccess.Visibility = Visibility.Visible;
                 TxtLastSync.Text         = "Last sync: " + when;
                 TxtLastSync.Visibility   = Visibility.Visible;
@@ -178,22 +188,112 @@ namespace GmailCardDAVSync
             }
         }
 
-        // Map href → UID using saved etag data as a lookup key.
-        // Since we store "href|etag" we can't directly get UID from href.
-        // For deleted contacts, we do a scan of the contact store.
-        private string UidFromHref(string href)
+        // ================================================================
+        // BUTTON 2: Phone → Google
+        // Reads all contacts from the Gmail list on the phone
+        // and uploads each one to Google via CardDAV PUT.
+        // ================================================================
+        private async void BtnPhoneToGoogle_Click(object sender, RoutedEventArgs e)
         {
-            // Extract the filename part of the href (e.g. "abc123.vcf")
-            // which Google uses as the UID
-            int lastSlash = href.LastIndexOf('/');
-            if (lastSlash < 0) return string.Empty;
-            string filename = href.Substring(lastSlash + 1);
-            // Remove .vcf extension
-            if (filename.EndsWith(".vcf", StringComparison.OrdinalIgnoreCase))
-                filename = filename.Substring(0, filename.Length - 4);
-            return filename;
+            string email, password;
+            if (!ValidateInputs(out email, out password)) return;
+            SaveCredentialsIfRequested(email, password);
+
+            SetUiBusy(true);
+            HideAllBanners();
+
+            try
+            {
+                IProgress<string> progress = new Progress<string>(
+                    msg => UpdateProgress(msg));
+
+                var store   = new ContactStoreService();
+                var cardDav = new CardDavService(email, password);
+
+                // Read all contacts from phone's Gmail list
+                var phoneContacts = await store.ReadAllContactsAsync(progress);
+
+                if (phoneContacts.Count == 0)
+                {
+                    ShowError("No contacts found on phone.\n" +
+                              "Run Google → Phone sync first.");
+                    return;
+                }
+
+                // Find only contacts that changed since last sync
+                var savedHashes = ContactHashStorage.LoadAll();
+                var changed     = new System.Collections.Generic.List<Windows.ApplicationModel.Contacts.Contact>();
+
+                foreach (var contact in phoneContacts)
+                {
+                    if (!ContactHashStorage.IsUnchanged(contact, savedHashes))
+                        changed.Add(contact);
+                }
+
+                if (changed.Count == 0)
+                {
+                    string when3 = DateTime.Now.ToString("dd MMM yyyy  HH:mm");
+                    TxtSuccess.Text          = "No changes detected on phone.";
+                    BannerSuccess.Visibility = Visibility.Visible;
+                    TxtLastSync.Text         = "Last check: " + when3;
+                    TxtLastSync.Visibility   = Visibility.Visible;
+                    return;
+                }
+
+                progress.Report("Found " + changed.Count + " changed contact(s). Uploading...");
+
+                int uploaded = 0;
+                int failed   = 0;
+                int i        = 0;
+
+                // Update hashes after successful upload
+                var currentHashes = ContactHashStorage.LoadAll();
+
+                foreach (var contact in changed)
+                {
+                    bool ok = await cardDav.UploadContactAsync(contact, progress);
+                    if (ok)
+                    {
+                        uploaded++;
+                        // Update stored hash so next sync doesn't re-upload
+                        if (!string.IsNullOrEmpty(contact.RemoteId))
+                            currentHashes[contact.RemoteId] =
+                                ContactHashStorage.ComputeHash(contact);
+                    }
+                    else failed++;
+                    i++;
+                    if (i % 5 == 0)
+                        progress.Report("Uploaded " + i + " of " +
+                                        changed.Count + "...");
+                }
+
+                // Persist updated hashes
+                ContactHashStorage.SaveAll(currentHashes);
+
+                string when = DateTime.Now.ToString("dd MMM yyyy  HH:mm");
+                string result = uploaded + " of " + phoneContacts.Count +
+                                " contacts uploaded to Google (" +
+                                changed.Count + " changed).";
+                if (failed > 0) result += "\n" + failed + " failed.";
+
+                TxtSuccess.Text          = result;
+                BannerSuccess.Visibility = Visibility.Visible;
+                TxtLastSync.Text         = "Last upload: " + when;
+                TxtLastSync.Visibility   = Visibility.Visible;
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex.Message);
+            }
+            finally
+            {
+                SetUiBusy(false);
+            }
         }
 
+        // ================================================================
+        // FORGET button
+        // ================================================================
         private void BtnForget_Click(object sender, RoutedEventArgs e)
         {
             CredentialStorage.Delete();
@@ -205,12 +305,26 @@ namespace GmailCardDAVSync
             HideAllBanners();
         }
 
+        // ================================================================
+        // Helpers
+        // ================================================================
+        private string UidFromHref(string href)
+        {
+            int lastSlash = href.LastIndexOf('/');
+            if (lastSlash < 0) return string.Empty;
+            string filename = href.Substring(lastSlash + 1);
+            if (filename.EndsWith(".vcf", StringComparison.OrdinalIgnoreCase))
+                filename = filename.Substring(0, filename.Length - 4);
+            return filename;
+        }
+
         private void SetUiBusy(bool busy)
         {
-            BtnSync.IsEnabled        = !busy;
-            TxtEmail.IsEnabled       = !busy;
-            TxtPassword.IsEnabled    = !busy;
-            PanelProgress.Visibility = busy
+            BtnGoogleToPhone.IsEnabled = !busy;
+            BtnPhoneToGoogle.IsEnabled = !busy;
+            TxtEmail.IsEnabled         = !busy;
+            TxtPassword.IsEnabled      = !busy;
+            PanelProgress.Visibility   = busy
                 ? Visibility.Visible
                 : Visibility.Collapsed;
             if (!busy) TxtProgress.Text = string.Empty;

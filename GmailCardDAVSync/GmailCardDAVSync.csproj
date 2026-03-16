@@ -127,8 +127,10 @@
     <Compile Include="App.xaml.cs">
       <DependentUpon>App.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Helpers\ContactHashStorage.cs" />
     <Compile Include="Helpers\CredentialStorage.cs" />
     <Compile Include="Helpers\ETagStorage.cs" />
+    <Compile Include="Helpers\LabelStorage.cs" />
     <Compile Include="MainPage.xaml.cs">
       <DependentUpon>MainPage.xaml</DependentUpon>
     </Compile>
@@ -137,6 +139,7 @@
     <Compile Include="Services\CardDavService.cs" />
     <Compile Include="Services\ContactStoreService.cs" />
     <Compile Include="Services\VCardParser.cs" />
+    <Compile Include="Services\VCardSerializer.cs" />
   </ItemGroup>
   <ItemGroup>
     <AppxManifest Include="Package.appxmanifest">
