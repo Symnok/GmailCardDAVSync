@@ -43,7 +43,7 @@ The application supports the following **Windows 10 Mobile builds**:
 * **1703**
 * **1709**
 
-Due to the **lack of background execution support**, synchronization must currently be **performed manually**.
+ Background task syncs contacts from Google to phone every 15 mins in addition to manual sync. **Phone to Google sync is manual**
 
 ---
 
@@ -84,6 +84,7 @@ Currently, only one field is known **not to synchronize**:
 * Synchronization works **directly via CardDAV**.
 * No Google Cloud project configuration is required.
 * Only a **Google App Password** is needed.
+* Background task syncs contacts from Google to phone every 15 mins in addition to manual sync. Phone to Google sync is manual
 
 ## Screenshot
 <p align="center">
