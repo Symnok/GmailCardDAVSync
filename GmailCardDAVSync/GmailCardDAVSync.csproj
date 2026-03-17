@@ -127,6 +127,7 @@
     <Compile Include="App.xaml.cs">
       <DependentUpon>App.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Helpers\BackgroundTaskHelper.cs" />
     <Compile Include="Helpers\ContactHashStorage.cs" />
     <Compile Include="Helpers\CredentialStorage.cs" />
     <Compile Include="Helpers\ETagStorage.cs" />
@@ -174,6 +175,12 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Views\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SyncComponent\SyncComponent.csproj">
+      <Project>{9c448a15-ff5d-4831-837e-6048d1e2f6ee}</Project>
+      <Name>SyncComponent</Name>
+    </ProjectReference>
   </ItemGroup>
   <PropertyGroup Condition=" '$(VisualStudioVersion)' == '' or '$(VisualStudioVersion)' &lt; '14.0' ">
     <VisualStudioVersion>14.0</VisualStudioVersion>

@@ -6,7 +6,10 @@ using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
 using GmailCardDAVSync.Helpers;
 using GmailCardDAVSync.Services;
+using Windows.Storage;
+using Windows.ApplicationModel.Background;
 using GmailCardDAVSync.Services;
+using Windows.Storage;
 
 namespace GmailCardDAVSync
 {
@@ -17,7 +20,7 @@ namespace GmailCardDAVSync
             this.InitializeComponent();
         }
 
-        protected override void OnNavigatedTo(NavigationEventArgs e)
+        protected override async void OnNavigatedTo(NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
             var saved = CredentialStorage.Load();
@@ -28,6 +31,35 @@ namespace GmailCardDAVSync
                 BtnForget.Visibility   = Visibility.Visible;
                 TxtLastSync.Visibility = Visibility.Visible;
                 TxtLastSync.Text       = "Credentials loaded from secure storage";
+
+                await BackgroundTaskHelper.RegisterAsync();
+            }
+            UpdateBgStatus();
+        }
+
+        private async void UpdateBgStatus()
+        {
+            bool registered = BackgroundTaskHelper.IsRegistered();
+            TxtBgStatus.Text = registered ? "Every 15 min" : "Not registered";
+
+            // DEBUG — show registration result
+            var result = await BackgroundTaskHelper.RegisterAsync();
+            TxtBgStatus.Text += " | Register result: " + result;
+
+            // DEBUG — show access status
+            var status = await BackgroundExecutionManager.RequestAccessAsync().AsTask();
+            TxtBgStatus.Text += " | Access: " + status.ToString();
+                       
+            TxtBgStatus.Text   = registered ? "Every 15 min" : "Not registered";
+            TxtBgStatus.Foreground = new Windows.UI.Xaml.Media.SolidColorBrush(
+                registered ? Windows.UI.Colors.Green : Windows.UI.Colors.Gray);
+
+            var settings = ApplicationData.Current.LocalSettings;
+            if (settings.Values.ContainsKey("LastBgSync"))
+            {
+                TxtLastBgSync.Text       = "Last: " +
+                    settings.Values["LastBgSync"];
+                TxtLastBgSync.Visibility = Visibility.Visible;
             }
         }
 
@@ -177,6 +209,9 @@ namespace GmailCardDAVSync
                 BannerSuccess.Visibility = Visibility.Visible;
                 TxtLastSync.Text         = "Last sync: " + when;
                 TxtLastSync.Visibility   = Visibility.Visible;
+
+                await BackgroundTaskHelper.RegisterAsync();
+                UpdateBgStatus();
             }
             catch (Exception ex)
             {
@@ -261,12 +296,10 @@ namespace GmailCardDAVSync
                         uploaded++;
 
                         // NEW contact — save the generated UID back to the
-                        // phone contact's RemoteId so next sync knows it
-                        // already exists on Google and won't create a duplicate
+                        // phone contact's RemoteId so next sync won't duplicate
                         if (wasNew)
                             await store.SaveRemoteIdAsync(contact.Id, usedUid);
 
-                        // Update hash using actual UID
                         currentHashes[usedUid] =
                             ContactHashStorage.ComputeHash(contact);
                     }
@@ -306,13 +339,16 @@ namespace GmailCardDAVSync
         // ================================================================
         private void BtnForget_Click(object sender, RoutedEventArgs e)
         {
+            BackgroundTaskHelper.Unregister();
             CredentialStorage.Delete();
             ETagStorage.Clear();
             TxtEmail.Text          = string.Empty;
             TxtPassword.Password   = string.Empty;
             BtnForget.Visibility   = Visibility.Collapsed;
-            TxtLastSync.Visibility = Visibility.Collapsed;
+            TxtLastSync.Visibility   = Visibility.Collapsed;
+            TxtLastBgSync.Visibility = Visibility.Collapsed;
             HideAllBanners();
+            UpdateBgStatus();
         }
 
         // ================================================================
