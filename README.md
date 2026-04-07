@@ -92,7 +92,11 @@ Currently, only one field is known **not to synchronize**:
 </p>
 
 ## Credits
-PeopleAPI code of this app is based on and inspired by user @Computershik73 code of corresponding applications for W10M https://github.com/Computershik73/WPGContacts and Symbian https://github.com/Computershik73/SymGContacts
+PeopleAPI code of this app is based on and inspired by user @Computershik73 code of corresponding applications for W10M 
+https://github.com/Computershik73/WPGContacts 
+and Symbian 
+https://github.com/Computershik73/SymGContacts
+
 Check his other programms here https://t.me/cmplog
 
 
